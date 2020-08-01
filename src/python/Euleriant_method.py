@@ -1,34 +1,9 @@
 from fluid_solver import GridMethod_Solver
 from abc import ABCMeta ,abstractmethod
 from utils import DataPair
-
-class Grid:
-    @property
-    def resolution(self):
-        pass
-
-    @property
-    def origin(self):
-        pass
-
-    @property
-    def grid_spacing(self):
-        pass
-
-    @property
-    def bounding_box(self):
-        pass
-
-class GridSampler(metaclass = ABCMeta):
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def sample(self , grid):
-        pass
+from typing import List , Callable , Union , Tuple , Optional 
 
 class AdvectionSolver(metaclass = ABCMeta):
-
     @abstractmethod
     def advect(self, vec_field , in_grid , out_grid , dt):
         pass
@@ -66,29 +41,36 @@ class Eulerian_Solver(GridMethod_Solver):
         projection_solver   : ProjectionSolver ,
         velocity_pair       : DataPair,
         pressure_pair       : DataPair,
-        gravity             
         ):
         
         self.advection_solver = advection_solver 
         self.projection_solver= projection_solver
 
-        self.gravity = gravity
-        self.velocity_pair = velocity_pair
-        self.pressure_pair = pressure_pair
+        self._velocity_pair = velocity_pair
+        self._pressure_pair = pressure_pair
 
-    def compute_advection(self, time_interval):
-        self.advection_solver.advect(self.velocity_pair.old , self.velocity_pair , time_interval)
-        self.velocity_pair.swap()
+
+    def set_advection_grids(self , grids: List[DataPair]):
+        assert(isinstance(grids , list) , "type of grids should be List[DataPair].")
+        self.advection_grids = grids
+
+    def set_externel_forces(self , forces : List[Callable[[float] , None]]) :
+        assert(isinstance(forces , list) , "type of forces should be List[Callable[[float] , None]]")
+        self.force_calculators = forces
+
+    def compute_advection(self, time_interval : float):
+        for pair in self.advection_grids :
+            self.advection_solver.advect(self._velocity_pair.old , pair , time_interval)
+        for pair in self.advection_grids :
+            pair.swap()
         #TODO: apply boundary condition
         pass
 
-    def compute_external_force(self , time_interval):
-        #TODO: 
-        # 1. compute gravity
-        # 2. other momentum
-        pass
+    def compute_external_force(self , time_interval : float):
+        for f in self.force_calculators:
+            f(time_interval)    # update velocity field
 
-    def compute_projection(self , time_interval):
+    def compute_projection(self , time_interval : float):
         #TODO
         pass
 
