@@ -23,7 +23,7 @@ class Smoke_Solver(Eulerian_Solver):
         self._pressure_new = ti.field(dtype = ti.f32 , shape=(self.resolution))
         self._pressure_old = ti.field(dtype = ti.f32 , shape=(self.resolution))
         self._density_new = ti.field( dtype = ti.f32 , shape=(self.resolution))
-        self._density_old = ti.field( dtype = ti.f32 , shape=(self.resolution))
+        self._density_old = ti.field( dtype = ti.f32 , shape=( self.resolution))
 
         # data pairs
         sampler = DirectlySampler
