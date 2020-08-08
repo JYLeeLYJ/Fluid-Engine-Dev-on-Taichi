@@ -52,7 +52,7 @@ class Jacobian_Iterate(Linear_Solver):
         pass
 
     def solve(self , x : Vector, x_new : Vector , b : Vector) :
-        pair = DataPair(x , x_new)
+        pair = DataPair(x , x_new,None)
         for _ in range(self.max_iter):
             x_new.fill(0.0)
             self.jacobi_mat.apply(pair.old , b , pair.new) # jacobi step

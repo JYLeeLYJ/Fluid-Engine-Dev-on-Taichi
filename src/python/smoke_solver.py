@@ -1,16 +1,17 @@
-from Euleriant_method import Eulerian_Solver
-from utils import DataPair , GridSampler , DirectlySampler , Ti_Vector
+from Eulerian_method import Eulerian_Solver
+from utils import DataPair , GridSampler , DirectlySampler 
 import taichi as ti
 
 class Smoke_Solver(Eulerian_Solver):
     def __init__ (self , resolution ):
         dim = len(resolution)
-        assert(dim == 2 or dim == 3 , "Incorrect resolution shape , should be (x, y) or (x,y,z).")
-        
+        #assert(dim == 2 or dim == 3 , "Incorrect resolution shape , should be (x, y) or (x,y,z).")
+        assert(dim == 2 , "only 2d resolution is supported at present , like (x,y) or [x,y]")
+
         self.dim = dim
         self.resolution = tuple(resolution)
-        self.n = self.resolution[0] * self.resolution[1] if self.dim == 2 else \
-            self.resolution[0] * self.resolution[1] * self.resolution[2] 
+        self.n = self.resolution[0] * self.resolution[1] #if self.dim == 2 else \
+            #self.resolution[0] * self.resolution[1] * self.resolution[2] 
 
         self.densityBuoyancyFactor = 1.0
         self.tempretureBuoyancyFactor = 1.0
@@ -35,7 +36,7 @@ class Smoke_Solver(Eulerian_Solver):
 
         pass
 
-    def set_gravity(self , g : Ti_Vector):
+    def set_gravity(self , g ):
         self.gravity = g
 
     @ti.kernel

@@ -1,10 +1,16 @@
 from fluid_solver import GridMethod_Solver
 from abc import ABCMeta ,abstractmethod
-from utils import DataPair , Grid
+from utils import DataPair , Grid , near_index
 from typing import List , Callable , Union , Tuple , Optional 
 from enum import Enum
 
 import taichi as ti
+
+# @ti.data_oriented
+class FluidMark(Enum):
+    Fluid = 0
+    Air = 1
+    Boundary = 2
 
 class AdvectionSolver(metaclass = ABCMeta):
     @abstractmethod
@@ -116,51 +122,67 @@ class BFACC(AdvectionSolver):
         pass
 
 class ForwardEulerDeffusionSolver(DiffusionSolver):
-    def __init__(self):
-        self.marker = None
+    def __init__(self , diffusion_coefficient):
+        self.coefficient = diffusion_coefficient
     
-    @ti.func
-    def build_marker(self):
-        #TODO
-        pass
+    # @ti.func
+    # def build_marker(self):
+    #     #TODO
+    #     pass
     
     @ti.kernel
     def solve(
         self , 
         vec_field : Grid ,
         next_vec_field : Grid , 
-        diffusionCoefficient : ti.f32 , 
+        marker : Grid,
         dt : ti.f32 ):
 
         for I in vec_field.grid_data :
             next_vec_field[I] = \
                 vec_field[I] + \
-                diffusionCoefficient * dt * self.laplacian(vec_field , self.marker , I)
+                self.coefficient * dt * self.laplacian(vec_field ,marker, I)
 
     @ti.func
-    def laplacian( self , grid : Grid, marker : Grid , I : List) :
-        dim = ti.static(len(I))
-        res = 0.0
-        for i in range(dim):
-            #TODO : use marker and judge
-            pass
-        return res
+    def laplacian( self , grid : Grid, marker : Grid , I : ti.template()) :
+        resolution = grid.resolution()
+        dfx , dfy = 0.0 , 0.0
+        i , j = ti.static(I[0] , I[1])
+        center = grid.sample(I)
+        if i > 0 and marker.sample([i - 1,j]) == FluidMark.Fluid :
+            dfx += grid.sample([i - 1, j]) - center
+        elif i + 1 < resolution[0] and marker.sample([i+1 , j]) == FluidMark.Fluid :
+            dfx += grid.sample([i + 1, j]) - center
+
+        if j > 0 and marker.sample([ i , j -1 ]) == FluidMark.Fluid:
+            dfy += grid.sample([i , j - 1]) - center
+        elif j + 1 < resolution[1] and marker.sample([i , j+1]) == FluidMark.Fluid :
+            dfy += grid.sample([i , j + 1]) - center
+        
+        #TODO : use marker and judge
+
+        # return dfx / (dx ** 2) + dfy / (dy **2)
+        return dfx + dfy # note that spacing of grid = ( 1, 1) as default now
 
 class Eulerian_Solver(GridMethod_Solver):
     def __init__(
         self ,
-        advection_solver    : AdvectionSolver ,
-        projection_solver   : ProjectionSolver ,
         velocity_pair       : DataPair,
         pressure_pair       : DataPair,
+        advection_solver    : AdvectionSolver ,
+        projection_solver   : ProjectionSolver ,
+        diffusion_solver    : DiffusionSolver = None
         ):
         
         self.advection_solver = advection_solver 
         self.projection_solver= projection_solver
+        self.diffusion_solver = diffusion_solver
 
         self._velocity_pair = velocity_pair
         self._pressure_pair = pressure_pair
 
+        # Compute marker
+        self.marker = None
 
     def set_advection_grids(self , grids: List[DataPair]):
         assert(isinstance(grids , list) , "type of grids should be List[DataPair].")
@@ -175,10 +197,15 @@ class Eulerian_Solver(GridMethod_Solver):
     def compute_advection(self, time_interval : float):
         for pair in self.advection_grids :
             self.advection_solver.advect(self._velocity_pair.old , pair , time_interval)
+            self.extropolateIntoCollider(pair)
         for pair in self.advection_grids :
             pair.swap()
 
         self.applyboundaryCondition()
+
+    def extropolateIntoCollider(self, grid):
+        #TODO extropolateIntoCollider
+        pass
 
     def applyboundaryCondition(self):
         #TODO: apply boundary condition
@@ -192,5 +219,15 @@ class Eulerian_Solver(GridMethod_Solver):
         #TODO
         pass
 
-    def compute_viscosity(self):
-        pass
+    def build_marker(self):
+        return self.marker
+
+    def compute_viscosity(self , time_interval : float):
+        if not self.diffusion_solver is None :
+            marker = self.build_marker()
+            self.diffusion_solver.solve(
+                self._velocity_pair.old ,
+                self._velocity_pair.new, 
+                marker ,
+                time_interval)      
+

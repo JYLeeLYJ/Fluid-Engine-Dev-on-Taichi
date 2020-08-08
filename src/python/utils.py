@@ -3,13 +3,8 @@ from abc import ABCMeta , abstractmethod
 
 import taichi as ti
 
-Ti_Field = Union [ti.Matrix , ti.Expr]
-Ti_Matrix = Ti_Field
-Ti_Vector = Ti_Matrix
-Ti_Scalar = Union[ti.f32 , ti.f64 , ti.i8 , ti.i16 , ti.i64 , ti.i32 ]
-
 @ti.func
-def near_index( I : Ti_Vector , dim : int  , distance : int) -> Ti_Vector:
+def near_index( I , dim   , distance ) :
     ti.static_assert( dim == len(I) , "dimension mismatch.")
     res = ti.Vector(I)
     res[dim] += distance
@@ -17,23 +12,23 @@ def near_index( I : Ti_Vector , dim : int  , distance : int) -> Ti_Vector:
 
 class GridSampler(metaclass = ABCMeta):
     @abstractmethod
-    def sample(self , grid : Ti_Field , pos : Ti_Vector ) -> Union[Ti_Vector, Ti_Scalar]:
+    def sample(self , grid , pos  ) :
         pass
 
 @ti.data_oriented
 class Grid:
     def __init__(
         self , 
-        grid : Ti_Field , 
-        sampler : GridSampler ,
-        spacing : Union[Tuple[int , int, int ] , Tuple[int , int] , int] = 1
+        grid ,
+        sampler ,
+        # spacing = 1,
         ):
 
         self.grid_data = grid   
         self.sampler = sampler 
 
     @ti.func
-    def resolution(self) -> Ti_Vector:
+    def resolution(self) :
         return ti.Vector(list(self.grid_data.shape))
 
     @ti.func
@@ -42,7 +37,7 @@ class Grid:
         pass
 
     @ti.func
-    def sample(self , pos : Ti_Vector ) -> Union[Ti_Vector , Ti_Scalar]:
+    def sample(self , pos):
         return self.sampler(self.grid_data , pos)
 
 class ClampSampler(GridSampler):
@@ -59,11 +54,11 @@ class ClampSampler(GridSampler):
 
 class DirectlySampler(GridSampler):
     @ti.func
-    def sample(self , grid : Ti_Field , pos : Ti_Vector ) -> Union[Ti_Vector, Ti_Scalar]:
-        return grid[pos]        
+    def sample(self , grid , pos ):
+        return grid[pos]    # might lead to undefined behavior if pos is out of index boundary
 
 class DataPair:
-    def __init__(self , old : Ti_Field , new : Ti_Field , sampler : GridSampler):
+    def __init__(self , old  , new , sampler ):
         self.new = Grid(new , sampler) 
         self.old = Grid(old , sampler)
 

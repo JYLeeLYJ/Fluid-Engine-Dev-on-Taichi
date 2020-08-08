@@ -6,6 +6,7 @@ class FluidSolver(metaclass = ABCMeta):
         pass
 
 class PraticalMethod_Solver(FluidSolver):
+    #TODO
     def __init__(self):
         pass
 
@@ -43,6 +44,7 @@ class GridMethod_Solver(FluidSolver):
         self.end_time_intergrate()
 
 class HybridMethod_Solver(FluidSolver):
+    #TODO
     def __init__(self):
         pass
 
