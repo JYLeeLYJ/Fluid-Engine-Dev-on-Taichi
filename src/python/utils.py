@@ -25,6 +25,10 @@ def clamp_index2( x : Int , y : Int , size : Vector) -> Index :
     j = max(0,min(y ,size[1] -1))
     return ti.Vector([i,j])
 
+@ti.func
+def linear_interpolate( v1 : ti.template(), v2 : ti.template()  , fraction : Float) -> ti.template() :
+    return v1 + fraction * (v2 - v1)
+
 ### ================ Utility types ================================
 
 class DataPair:
@@ -146,7 +150,7 @@ class VectorField(Grid):
         return self._grid[pos]
 
     @ti.func
-    def divergence(self, pos):
+    def divergence(self, pos : Index) -> Float:
         sz , ds = self.size() , self.spacing()
         i , j = pos[0] , pos[1]
 
@@ -156,6 +160,27 @@ class VectorField(Grid):
         down = self._grid[clamp_index2(i , j - 1 , sz)][1]
 
         return 0.5 * ((right - left) / ds[0] + (top - down)/ds[1])
+
+# Bilinear interpolation sampling in 2d grids
+@ti.data_oriented
+class Bilinear_Interp_Sampler(Grid.Sampler):
+    def __init__(self):
+        pass
+
+    @ti.func
+    def sample_value(self , grid : Grid , pos : Vector) -> ti.template():   # Vector or Grid
+        I = ti.static(pos)
+        iu , iv = int(I[0]) , int(I[1])
+        du , dv = I[0] - iu , I[1] - iv
+        a = grid[iu , iv]
+        b = grid[iu + 1 , iv]
+        c = grid[iu , iv + 1]
+        d = grid[iu + 1 , iv + 1]
+        return linear_interpolate(
+            linear_interpolate( a , b , du) , 
+            linear_interpolate( c , d , du) , 
+            dv
+        )
 
 # @ti.data_oriented
 # class ClampSampler(GridSampler):
