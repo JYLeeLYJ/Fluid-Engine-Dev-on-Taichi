@@ -154,7 +154,11 @@ class ScalarField(Grid):
         top  = self._grid[clamp_index2(i , j + 1 , sz)]
         down = self._grid[clamp_index2(i , j - 1 , sz)]
 
-        return (right + left - 2 * centre) / ds[0] ** 2 + (top + down - 2 * centre) / ds[1] ** 2
+        return (right + left - 2 * centre) / (ds[0] ** 2) + (top + down - 2 * centre) / (ds[1] ** 2)
+
+    @ti.func
+    def field(self) -> ti.template():
+        return self._grid
 
 @ti.data_oriented
 class VectorField(Grid):
@@ -182,6 +186,10 @@ class VectorField(Grid):
         down = self._grid[clamp_index2(i , j - 1 , sz)][1]
 
         return 0.5 * ((right - left) / ds[0] + (top - down)/ds[1])
+
+    @ti.func
+    def field(self) -> ti.template():
+        return self._grid
 
 # @ti.data_oriented
 # class ClampSampler(GridSampler):

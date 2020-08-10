@@ -1,31 +1,12 @@
-from fluid_solver import GridMethod_Solver
+from fluid_solver import * 
 from abc import ABCMeta ,abstractmethod
-from utils import DataPair , Grid , near_index
+from utils import DataPair , Grid , Bilinear_Interp_Sampler , VectorField , ScalarField , clamp_index2
 from typing import List , Callable , Union , Tuple , Optional 
 from enum import Enum
 
+from types import Float , Vector ,Index
+
 import taichi as ti
-
-# @ti.data_oriented
-class FluidMark(Enum):
-    Fluid = 0
-    Air = 1
-    Boundary = 2
-
-class AdvectionSolver(metaclass = ABCMeta):
-    @abstractmethod
-    def advect(self, vec_field , in_grid , out_grid , dt):
-        pass
-
-class ProjectionSolver(metatclass = ABCMeta):
-    @abstractmethod
-    def projection(self , vec_field , pressure_pair , dt , sdf):
-        pass
-
-class DiffusionSolver(metaclass = ABCMeta):
-    @abstractmethod
-    def solve(self , vec_field , next_vec_field , diffusionCoefficient , dt) :
-        pass
 
 class Semi_Lagrangian(AdvectionSolver):
 
@@ -34,135 +15,108 @@ class Semi_Lagrangian(AdvectionSolver):
         RK_2 = 2
         RK_3 = 3
 
-    def __init__(self , RK = 1):
+    def __init__(self , RK = Semi_Lagrangian.Order.RK_1):
+        assert(isinstance(RK , Semi_Lagrangian.Order) , "RK must be an instance of SemiLagrangian.Order.")
         self.RK = RK
 
     @ti.func
-    def backtrace(self ,  vec_grid , I , dt):
-        p = I
+    def backtrace(self ,  vel_grid : VectorField, I : Index , dt : Float) -> Vector:
+        p = int(I)
         if ti.static(self.RK == Semi_Lagrangian.Order.RK_1):
-            p -= dt * vec_grid.sample(I)
+            p -= dt * vel_grid.value(I)
         elif ti.static(self.RK == Semi_Lagrangian.Order.RK_2):
-            mid = p - 0.5 * dt * vec_grid.sample(I)
-            p -= dt * vec_grid.sample(mid)
+            mid = p - 0.5 * dt * vel_grid.value(I)
+            p -= dt * vel_grid.sample(mid)
         elif ti.static(self.RK == Semi_Lagrangian.Order.RK_3):
-            v1 = vec_grid.sample(I)
+            v1 = vel_grid.value(I)
             p1 = p - 0.5 * dt * v1
-            v2 = vec_grid.sample(p1)
+            v2 = vel_grid.sample(p1)
             p2 = p - 0.75 * dt * v1
-            v3 = vec_grid.sample(p2)
+            v3 = vel_grid.sample(p2)
             p -= dt * ( 2/9 * v1 + 1/3 * v2 + 4/9 * v3)
-        else :
-            ti.static_print(f"unsupported order for RK{self.RK}")
-
         return p
 
-    @ti.func
-    def lin_interpolate(self , v1 , v2 , frac):
-        return v1 + frac * (v2 - v1)
-
-    @ti.func
-    def bilin_interplolate2(self , grid , I):
-        iu , iv = int(I[0]) , int(I[1])
-        du , dv = I[0] - iu , I[1] - iv
-        a = grid.sample(iu , iv)
-        b = grid.sample(iu + 1 , iv)
-        c = grid.sample(iu , iv + 1)
-        d = grid.sample(iu + 1 , iv + 1)
-        return self.lin_interpolate(
-            self.lin_interpolate(a , b , du),
-            self.lin_interpolate(c , d , du),
-            dv )
-    
-    @ti.func
-    def bilin_interplolate3(self, grid , I):
-        iu , iv , iw = int(I[0]) , int(I[1]) , int(I[2])
-        du , dv , dw = I[0] - iu , I[1] - iv , I[2] - iw
-        a = grid.sample(iu , iv , iw) 
-        b = grid.sample(iu + 1, iv , iw)
-        c = grid.sample(iu , iv + 1, iw)
-        d = grid.sample(iu + 1 , iv + 1 , iw)
-
-        ua = grid.sample(iu , iv , iw + 1) 
-        ub = grid.sample(iu + 1, iv , iw + 1)
-        uc = grid.sample(iu , iv + 1, iw + 1)
-        ud = grid.sample(iu + 1 , iv + 1 , iw + 1)
-
-        low = self.lin_interpolate(
-            self.lin_interpolate(a , b , du),
-            self.lin_interpolate(c , d , du),
-            dv )
-        
-        up = self.lin_interpolate(
-            self.lin_interpolate(ua , ub , du),
-            self.lin_interpolate(uc , ud , du),
-            dv )
-
-        return self.lin_interpolate(low , up , dw)
-
-    @ti.func
-    def binlinear_interpolate(self , grid , I):
-        dim = ti.static(I.shape)
-        ti.static_assert(dim == 2 or dim == 3 , "only 2d or 3d interpolate is supported now." )
-        if ti.static(dim == 2):
-            return self.bilin_interplolate2(grid, I)
-        else:
-            return self.bilin_interplolate3(grid, I)
-
     @ti.kernel
-    def advect(self , vec_grid , in_grid , out_grid , dt):
-        for I in vec_grid:
-            pos = self.backtrace(vec_grid , ti.Vector(I) ,dt)
-            out_grid[I] = self.binlinear_interpolate(in_grid , pos)
+    def advect(
+        self , 
+        vel_grid : ti.template(),   # Grid (VectorField)
+        in_grid : ti.template() ,   # Grid
+        out_grid : ti.template() ,  # Grid
+        dt : Float):
 
-#TODO : bfacc
-class BFACC(AdvectionSolver):
+        out = ti.static(out_grid.field())
 
-    def advect(self, vec_field , in_grid , out_grid , dt):
-        pass
+        for I in vel_grid.field():
+            pos = self.backtrace(vel_grid , I ,dt)
+            out[I] = in_grid.sample(pos)
 
 class ForwardEulerDeffusionSolver(DiffusionSolver):
     def __init__(self , diffusion_coefficient):
         self.coefficient = diffusion_coefficient
     
-    # @ti.func
-    # def build_marker(self):
-    #     #TODO
-    #     pass
-    
     @ti.kernel
     def solve(
         self , 
-        vec_field : Grid ,
-        next_vec_field : Grid , 
-        marker : Grid,
-        dt : ti.f32 ):
+        vel_grid : ti.template() ,      # VectorField
+        next_vel_grid : ti.template() , # VectorField
+        marker : ti.template(),         # ScalaField
+        dt : Float ):
 
-        for I in vec_field.grid_data :
-            next_vec_field[I] = \
-                vec_field[I] + \
-                self.coefficient * dt * self.laplacian(vec_field ,marker, I)
+        for I in vel_grid.field() :
+            next_vel_grid[I] = vel_grid[I] + \
+                self.coefficient * dt * self.laplacian(vel_grid ,marker, I)
 
+    # TODO : reduce to gird.laplacian()
     @ti.func
-    def laplacian( self , grid : Grid, marker : Grid , I : ti.template()) :
-        resolution = grid.resolution()
+    def laplacian( self , grid : Grid, marker : Grid , I : Index) :
+        sz , ds = grid.size() , grid.spacing()
         dfx , dfy = 0.0 , 0.0
         i , j = ti.static(I[0] , I[1])
-        center = grid.sample(I)
-        if i > 0 and marker.sample([i - 1,j]) == FluidMark.Fluid :
-            dfx += grid.sample([i - 1, j]) - center
-        elif i + 1 < resolution[0] and marker.sample([i+1 , j]) == FluidMark.Fluid :
-            dfx += grid.sample([i + 1, j]) - center
+        center = grid.value(I)
+        if i > 0 and marker.value([i - 1,j]) == FluidMark.Fluid :
+            dfx += grid.value([i - 1, j]) - center
+        elif i + 1 < sz[0] and marker.value(ti.Vector([i+1 , j])) == FluidMark.Fluid :
+            dfx += grid.value([i + 1, j]) - center
 
-        if j > 0 and marker.sample([ i , j -1 ]) == FluidMark.Fluid:
-            dfy += grid.sample([i , j - 1]) - center
-        elif j + 1 < resolution[1] and marker.sample([i , j+1]) == FluidMark.Fluid :
-            dfy += grid.sample([i , j + 1]) - center
+        if j > 0 and marker.value([ i , j -1 ]) == FluidMark.Fluid:
+            dfy += grid.value([i , j - 1]) - center
+        elif j + 1 < sz[1] and marker.value([i , j+1]) == FluidMark.Fluid :
+            dfy += grid.value([i , j + 1]) - center
         
-        #TODO : use marker and judge
+        return dfx / (ds[0] ** 2) + dfy / (ds[1] ** 2) 
 
-        # return dfx / (dx ** 2) + dfy / (dy **2)
-        return dfx + dfy # note that spacing of grid = ( 1, 1) as default now
+@ti.data_oriented
+class Jacobian_ProjectionSolver(ProjectionSolver):
+    def __init__(self , max_iter : int):
+        self._max_iter = max_iter
+
+    def projection(
+        self ,
+        vel_field : VectorField,
+        pressure_pair : DataPair,
+        density : ScalarField ,
+        dt : Float ):
+
+        for _ in range(self._max_iter) :
+            self.jacobian_step(self , vel_field , density ,pressure_pair , dt) 
+            pressure_pair.swap()
+
+    @ti.kernel
+    def jacobian_step(        
+        self,
+        vel_field : ti.template() ,
+        density : ti.template() ,
+        pressure_curr   : ti.template() , 
+        pressure_next   : ti.template() ,
+        dt : Float ):
+
+        sz = ti.static(vel_field.size())
+        for i , j in vel_field.field() :
+            pl = pressure_curr.value(clamp_index2(i - 1 , j , sz))    
+            pr = pressure_curr.value(clamp_index2(i + 1 , j , sz))
+            pt = pressure_curr.value(clamp_index2(i , j + 1 , sz))
+            pb = pressure_curr.value(clamp_index2(i , j - 1 , sz))
+            pressure_next[i,j] = 0.25 *  (pl + pr + pt + pb - density[i,j] * vel_field.divergence([i,j]) / dt) 
 
 class Eulerian_Solver(GridMethod_Solver):
     def __init__(
@@ -184,6 +138,20 @@ class Eulerian_Solver(GridMethod_Solver):
         # Compute marker
         self.marker = None
 
+    @abstractmethod
+    def density(self):
+        pass
+
+    @abstractmethod
+    def velocity(self):
+        pass
+
+    @abstractmethod
+    def pressure(self):
+        pass
+
+    ## ---------- setters --------------
+
     def set_advection_grids(self , grids: List[DataPair]):
         assert(isinstance(grids , list) , "type of grids should be List[DataPair].")
         self.advection_grids = grids
@@ -194,6 +162,8 @@ class Eulerian_Solver(GridMethod_Solver):
         assert(isinstance(forces , list) , "type of forces should be List[Callable[[float] , None]]")
         self.force_calculators = forces
 
+    ## ---------- override ---------------
+
     def compute_advection(self, time_interval : float):
         for pair in self.advection_grids :
             self.advection_solver.advect(self._velocity_pair.old , pair , time_interval)
@@ -203,31 +173,53 @@ class Eulerian_Solver(GridMethod_Solver):
 
         self.applyboundaryCondition()
 
-    def extropolateIntoCollider(self, grid):
-        #TODO extropolateIntoCollider
-        pass
-
-    def applyboundaryCondition(self):
-        #TODO: apply boundary condition
-        pass
-
     def compute_external_force(self , time_interval : float):
         for f in self.force_calculators:
             f(time_interval)    # update velocity field
 
     def compute_projection(self , time_interval : float):
-        #TODO
+        #compute pressure 
+        self.projection_solver.solve(
+            self._velocity_pair.old ,# self._div_vel ,
+            self._pressure_pair.old , self.density() ,time_interval
+        )
+        #apply boundary condition
+        self.applyboundaryCondition()
+
+    def begin_time_intergrate(self, time_interval : float):
+        #TODO update collider 
+        #TODO update emitter
         pass
 
+    def end_time_intergrate(self , time_interval : float):
+        #TODO update v
+        pass     
+
+    ## ------- for concrete implemetation ---------------
+
     def build_marker(self):
+        #TODO
         return self.marker
 
-    def compute_viscosity(self , time_interval : float):
+    def viscosity_force(self , time_interval : float):
         if not self.diffusion_solver is None :
             marker = self.build_marker()
-            self.diffusion_solver.solve(
+            self.diffusion_solver.projection(
                 self._velocity_pair.old ,
                 self._velocity_pair.new, 
                 marker ,
-                time_interval)      
+                time_interval) 
+            self._velocity_pair.swap()
 
+
+    def extropolateIntoCollider(self, grid):
+        #TODO extropolateIntoCollider
+        # for collider
+        pass
+
+    def applyboundaryCondition(self):
+        #TODO: apply boundary condition
+        # No flux
+        # Slip
+        # check OpenBoundary => set velocity to be zero
+        pass
