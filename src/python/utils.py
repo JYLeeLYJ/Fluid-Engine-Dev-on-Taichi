@@ -1,6 +1,6 @@
 from typing import Union ,Tuple , List
 from abc import ABCMeta , abstractmethod
-from types import Index , Vector , Matrix , Float
+from types import Index , Vector , Matrix , Float , Int
 
 import taichi as ti
 
@@ -15,6 +15,12 @@ def clamp_index( I : Index , size : Vector) -> Index:
     ti.static_assert(len(size.shape) == 2 and len(I.shape) == 2)
     i = max(0,min(int(I[0]) ,size[0] -1))
     j = max(0,min(int(I[1]) ,size[1] -1))
+    return ti.Vector([i,j])
+
+@ti.func
+def clamp_index2( x : Int , y : Int , size : Vector) -> Index :
+    i = max(0,min(x ,size[0] -1))
+    j = max(0,min(y ,size[1] -1))
     return ti.Vector([i,j])
 
 @ti.data_oriented
@@ -89,13 +95,28 @@ class ScalarField(Grid):
         return self._grid[pos]
 
     @ti.func
-    def gradient(self , pos : Index):
-        #TODO
-        pass
+    def gradient(self , pos : Index) -> Vector :
+        sz , ds = ti.static(self.size() , self.spacing())
+        i , j = pos[0] ,pos[1]
+        left = self._grid[clamp_index2(i - 1 , j , sz)]
+        right= self._grid[clamp_index2(i + 1 , j , sz)]
+        top  = self._grid[clamp_index2(i , j + 1 , sz)]
+        down = self._grid[clamp_index2(i , j - 1 , sz)]
+
+        return  0.5 * ti.Vector([(right - left) / ds[0] , (top - down) / ds[1]])
 
     @ti.func
-    def laplacian(self , pos):
-        pass
+    def laplacian(self , pos : Index) -> Float :
+        sz , ds = self.size() , self.spacing()
+        i , j = pos[0] , pos[1]
+
+        centre  =  self._grid[pos]
+        left = self._grid[clamp_index2(i - 1 , j , sz)]
+        right= self._grid[clamp_index2(i + 1 , j , sz)]
+        top  = self._grid[clamp_index2(i , j + 1 , sz)]
+        down = self._grid[clamp_index2(i , j - 1 , sz)]
+
+        return (right + left - 2 * centre) / ds[0] ** 2 + (top + down - 2 * centre) / ds[1] ** 2
 
 @ti.data_oriented
 class VectorField(Grid):
@@ -109,11 +130,19 @@ class VectorField(Grid):
 
     @ti.func
     def value(self, pos : Index)->Float:
-        return self._grid(pos)
+        return self._grid[pos]
 
     @ti.func
     def divergence(self, pos):
-        pass
+        sz , ds = self.size() , self.spacing()
+        i , j = pos[0] , pos[1]
+
+        left = self._grid[clamp_index2(i - 1 , j , sz)][0]
+        right= self._grid[clamp_index2(i + 1 , j , sz)][0]
+        top  = self._grid[clamp_index2(i , j + 1 , sz)][1]
+        down = self._grid[clamp_index2(i , j - 1 , sz)][1]
+
+        return 0.5 * ((right - left) / ds[0] + (top - down)/ds[1])
 
 # @ti.data_oriented
 # class ClampSampler(GridSampler):
