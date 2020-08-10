@@ -39,7 +39,6 @@ class DataPair:
     def swap(self):
         self.new , self.old = self.old , self.new 
 
-
 @ti.data_oriented
 class Grid(metaclass = ABCMeta ):
 
@@ -63,7 +62,7 @@ class Grid(metaclass = ABCMeta ):
         pass
 
     @abstractmethod
-    def sample(self , pos : Index, sampler : Grid.Sampler) -> Vector or Float :
+    def sample(self , pos : Vector) -> Vector or Float :
         pass
 
     @abstractmethod
@@ -78,6 +77,27 @@ class Grid(metaclass = ABCMeta ):
     def spacing(self) -> Vector :
         return ti.Vector(self.spacing)
 
+# Bilinear interpolation sampling in 2d grids
+@ti.data_oriented
+class Bilinear_Interp_Sampler(Grid.Sampler):
+    def __init__(self):
+        pass
+
+    @ti.func
+    def sample_value(self , grid : Grid , pos : Vector) -> ti.template():   # Vector or Grid
+        I = ti.static(pos)
+        iu , iv = int(I[0]) , int(I[1])
+        du , dv = I[0] - iu , I[1] - iv
+        a = grid[iu , iv]
+        b = grid[iu + 1 , iv]
+        c = grid[iu , iv + 1]
+        d = grid[iu + 1 , iv + 1]
+        return linear_interpolate(
+            linear_interpolate( a , b , du) , 
+            linear_interpolate( c , d , du) , 
+            dv
+        )
+
 @ti.data_oriented
 class ConstantField(Grid):
     def __init__(
@@ -90,22 +110,23 @@ class ConstantField(Grid):
         super().__init__(size , spacing)
 
     @ti.func
-    def sample(self,pos : Index , sampler : Grid.Sampler):
+    def sample(self,pos : Vector) -> ti.template():
         return self._value
 
     @ti.func
-    def value(self, pos : Index):
+    def value(self, pos : Index) -> ti.template():
         return self._value
 
 @ti.data_oriented
 class ScalarField(Grid):
-    def __init__( self , ti_field, spacing = (1,1)):
+    def __init__( self , ti_field, spacing = (1,1) , sampler = Bilinear_Interp_Sampler()):
         self._grid = ti_field
+        self._sampler = sampler
         super().__init__(self._grid.shape , spacing)
 
     @ti.func
-    def sample(self, pos : Index , sampler : Grid.Sampler)->Float:
-        return sampler.sample_value(self._grid, pos)
+    def sample(self, pos : Vector)->Float:
+        return self._sampler.sample_value(self._grid, pos)
 
     @ti.func
     def value(self, pos : Index)->Float:
@@ -137,13 +158,14 @@ class ScalarField(Grid):
 
 @ti.data_oriented
 class VectorField(Grid):
-    def __init__(self , ti_field , spacing = (1,1)):
+    def __init__(self , ti_field , spacing = (1,1) , sampler = Bilinear_Interp_Sampler()):
         self._grid = ti_field
+        self._sampler = sampler
         super().__init__(self._grid.shape , spacing)
 
     @ti.func
-    def sample(self, pos : Index , sampler : Grid.Sampler)->Vector:
-        return sampler.sample_value(self._grid, pos)
+    def sample(self, pos : Vector )->Vector:
+        return self._sampler.sample_value(self._grid, pos)
 
     @ti.func
     def value(self, pos : Index)->Float:
@@ -160,27 +182,6 @@ class VectorField(Grid):
         down = self._grid[clamp_index2(i , j - 1 , sz)][1]
 
         return 0.5 * ((right - left) / ds[0] + (top - down)/ds[1])
-
-# Bilinear interpolation sampling in 2d grids
-@ti.data_oriented
-class Bilinear_Interp_Sampler(Grid.Sampler):
-    def __init__(self):
-        pass
-
-    @ti.func
-    def sample_value(self , grid : Grid , pos : Vector) -> ti.template():   # Vector or Grid
-        I = ti.static(pos)
-        iu , iv = int(I[0]) , int(I[1])
-        du , dv = I[0] - iu , I[1] - iv
-        a = grid[iu , iv]
-        b = grid[iu + 1 , iv]
-        c = grid[iu , iv + 1]
-        d = grid[iu + 1 , iv + 1]
-        return linear_interpolate(
-            linear_interpolate( a , b , du) , 
-            linear_interpolate( c , d , du) , 
-            dv
-        )
 
 # @ti.data_oriented
 # class ClampSampler(GridSampler):
