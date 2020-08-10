@@ -4,6 +4,8 @@ from types import Index , Vector , Matrix , Float , Int
 
 import taichi as ti
 
+### ================ Utility Functions =============================
+
 @ti.func
 def clamp_index( I : Index , size : Vector) -> Index:
     # dim = ti.static(len(I.shape))
@@ -22,6 +24,17 @@ def clamp_index2( x : Int , y : Int , size : Vector) -> Index :
     i = max(0,min(x ,size[0] -1))
     j = max(0,min(y ,size[1] -1))
     return ti.Vector([i,j])
+
+### ================ Utility types ================================
+
+class DataPair:
+    def __init__(self , old  , new , Grid ):
+        self.new = Grid(new) 
+        self.old = Grid(old)
+
+    def swap(self):
+        self.new , self.old = self.old , self.new 
+
 
 @ti.data_oriented
 class Grid(metaclass = ABCMeta ):
@@ -42,7 +55,7 @@ class Grid(metaclass = ABCMeta ):
         self._size = size
 
     def bounding_box(self):
-        #TODO
+        #TODO implement bounding box 
         pass
 
     @abstractmethod
@@ -173,12 +186,4 @@ class VectorField(Grid):
 #     @ti.func
 #     def sample(self , grid , pos):
 #         return self._value
-
-class DataPair:
-    def __init__(self , old  , new , Grid ):
-        self.new = Grid(new) 
-        self.old = Grid(old)
-
-    def swap(self):
-        self.new , self.old = self.old , self.new 
 
