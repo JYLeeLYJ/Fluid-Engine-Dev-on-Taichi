@@ -1,66 +1,154 @@
-from typing import Union ,Tuple
+from typing import Union ,Tuple , List
 from abc import ABCMeta , abstractmethod
+from types import Index , Vector , Matrix , Float
 
 import taichi as ti
 
 @ti.func
-def near_index( I , dim   , distance ) :
-    ti.static_assert( dim == len(I) , "dimension mismatch.")
-    res = ti.Vector(I)
-    res[dim] += distance
-    return res
+def clamp_index( I : Index , size : Vector) -> Index:
+    # dim = ti.static(len(I.shape))
+    # index = []
+    # for i in range(dim):
+    #     index.append(max(0,min(I[i] , size[i])))
+    # return index
 
-class GridSampler(metaclass = ABCMeta):
-    @abstractmethod
-    def sample(self , grid , pos  ) :
-        pass
+    ti.static_assert(len(size.shape) == 2 and len(I.shape) == 2)
+    i = max(0,min(int(I[0]) ,size[0] -1))
+    j = max(0,min(int(I[1]) ,size[1] -1))
+    return ti.Vector([i,j])
 
 @ti.data_oriented
-class Grid:
-    def __init__(
+class Grid(metaclass = ABCMeta ):
+
+    class Sampler(metaclass = ABCMeta):
+        @abstractmethod
+        def sample_value(self , grid : Grid, pos : Index ) -> Vector or Float :
+            pass
+
+    def __init__( 
         self , 
-        grid ,
-        sampler ,
-        # spacing = 1,
-        ):
+        size : Tuple[int] or List[int] ,
+        spacing : Tuple[int] or List[int] = (1,1)):
 
-        self.grid_data = grid   
-        self.sampler = sampler 
+        assert len(spacing) == 2 and len(size) == 2
+        
+        self._spacing = spacing
+        self._size = size
 
-    @ti.func
-    def resolution(self) :
-        return ti.Vector(list(self.grid_data.shape))
-
-    @ti.func
     def bounding_box(self):
         #TODO
         pass
 
-    @ti.func
-    def sample(self , pos):
-        return self.sampler(self.grid_data , pos)
+    @abstractmethod
+    def sample(self , pos : Index, sampler : Grid.Sampler) -> Vector or Float :
+        pass
 
-class ClampSampler(GridSampler):
-    def __init__(self , resolution):
-        self.resolution = resolution
+    @abstractmethod
+    def value(self , pos : Index) -> Vector or Float:
+        pass
 
     @ti.func
-    def sample(self , field , Indices):
-        dim = ti.static(len(self.resolution))
-        I = []
-        for i in range(dim):
-            I.append(max(0, min(self.resolution[i] - 1, int(self.resolution[i]))))
-        return field[I]
+    def size(self) -> Vector :
+        return ti.Vector(self.size)
 
-class DirectlySampler(GridSampler):
     @ti.func
-    def sample(self , grid , pos ):
-        return grid[pos]    # might lead to undefined behavior if pos is out of index boundary
+    def spacing(self) -> Vector :
+        return ti.Vector(self.spacing)
+
+@ti.data_oriented
+class ConstantField(Grid):
+    def __init__(
+        self , 
+        size : Tuple[int] or List[int], 
+        const_value : Float or Vector , 
+        spacing : Tuple[int] or List[int] = (1,1)):
+        
+        self._value = const_value
+        super().__init__(size , spacing)
+
+    @ti.func
+    def sample(self,pos : Index , sampler : Grid.Sampler):
+        return self._value
+
+    @ti.func
+    def value(self, pos : Index):
+        return self._value
+
+@ti.data_oriented
+class ScalarField(Grid):
+    def __init__( self , ti_field, spacing = (1,1)):
+        self._grid = ti_field
+        super().__init__(self._grid.shape , spacing)
+
+    @ti.func
+    def sample(self, pos : Index , sampler : Grid.Sampler)->Float:
+        return sampler.sample_value(self._grid, pos)
+
+    @ti.func
+    def value(self, pos : Index)->Float:
+        return self._grid[pos]
+
+    @ti.func
+    def gradient(self , pos : Index):
+        #TODO
+        pass
+
+    @ti.func
+    def laplacian(self , pos):
+        pass
+
+@ti.data_oriented
+class VectorField(Grid):
+    def __init__(self , ti_field , spacing = (1,1)):
+        self._grid = ti_field
+        super().__init__(self._grid.shape , spacing)
+
+    @ti.func
+    def sample(self, pos : Index , sampler : Grid.Sampler)->Vector:
+        return sampler.sample_value(self._grid, pos)
+
+    @ti.func
+    def value(self, pos : Index)->Float:
+        return self._grid(pos)
+
+    @ti.func
+    def divergence(self, pos):
+        pass
+
+# @ti.data_oriented
+# class ClampSampler(GridSampler):
+#     def __init__(self , resolution):
+#         self.resolution = resolution
+
+#     @ti.func
+#     def sample(self , field , Indices):
+#         dim = ti.static(len(self.resolution))
+#         I = []
+#         for i in range(dim):
+#             I.append(max(0, min(self.resolution[i] - 1, int(self.resolution[i]))))
+#         return field[I]
+
+# @ti.data_oriented
+# class DirectlySampler(GridSampler):
+#     @ti.func
+#     def sample(self , grid , pos ):
+#         # might lead to undefined behavior if pos is out of index boundary
+#         return grid[pos]    
+
+# @ti.data_oriented
+# class ConstantSampler(GridSampler):
+
+#     def __init__(self , const_value):
+#         self._value = const_value
+
+#     @ti.func
+#     def sample(self , grid , pos):
+#         return self._value
 
 class DataPair:
-    def __init__(self , old  , new , sampler ):
-        self.new = Grid(new , sampler) 
-        self.old = Grid(old , sampler)
+    def __init__(self , old  , new , Grid ):
+        self.new = Grid(new) 
+        self.old = Grid(old)
 
     def swap(self):
         self.new , self.old = self.old , self.new 
