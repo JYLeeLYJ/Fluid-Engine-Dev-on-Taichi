@@ -58,8 +58,6 @@ class Jacobian_Iterate(Linear_Solver):
             self.jacobi_mat.apply(pair.old , b , pair.new) # jacobi step
             pair.swap()
 
-
-
 class PreConditioner(metaclass = ABCMeta):
     def __init__(self):
         pass

@@ -1,16 +1,17 @@
 
 from abc import ABCMeta , abstractmethod
 
-class Animation(MetaClass = ABCMeta):
-    def __init__(self):
-        pass
-
+class Animation(metaclass = ABCMeta):
     @abstractmethod
     def display(self):
         pass
 
+    # @abstractmethod
+    # def pause(self):
+    #     pass
+
     @abstractmethod
-    def pause(self):
+    def reset(self):
         pass
 
     @abstractmethod

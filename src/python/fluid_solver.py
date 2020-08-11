@@ -12,37 +12,42 @@ class PraticalMethod_Solver(FluidSolver):
         pass
 
 class GridMethod_Solver(FluidSolver):
+
     @abstractmethod
-    def begin_time_intergrate(self):
+    def reset(self):
         pass
 
     @abstractmethod
-    def compute_external_force(self , time_interval):
+    def begin_time_intergrate(self , time_interval : float):
         pass
 
     @abstractmethod
-    def compute_viscosity(self):
+    def compute_advection(self , time_interval : float):
         pass
 
     @abstractmethod
-    def compute_projection(self , time_interval):
+    def compute_external_force(self , time_interval : float):
         pass
 
     @abstractmethod
-    def compute_advection(self , time_interval):
+    def compute_viscosity(self , time_interval : float):
         pass
 
     @abstractmethod
-    def end_time_intergrate(self):
+    def compute_projection(self , time_interval : float):
         pass
 
-    def advance_time_step(self , time_interval):
-        self.begin_time_intergrate()
+    @abstractmethod
+    def end_time_intergrate(self , time_interval : float):
+        pass
+
+    def advance_time_step(self , time_interval : float):
+        self.begin_time_intergrate(time_interval)
         self.compute_advection(time_interval)
         self.compute_external_force(time_interval)
-        self.compute_viscosity()
+        self.compute_viscosity(time_interval)
         self.compute_projection(time_interval)
-        self.end_time_intergrate()
+        self.end_time_intergrate(time_interval)
 
 class HybridMethod_Solver(FluidSolver):
     #TODO
@@ -61,9 +66,9 @@ class AdvectionSolver(metaclass = ABCMeta):
     def advect(self, vec_field , in_grid , out_grid , dt):
         pass
 
-class ProjectionSolver(metatclass = ABCMeta):
+class ProjectionSolver(metaclass = ABCMeta):
     @abstractmethod
-    def projection(self , vec_field , pressure_pair , dt , sdf):
+    def projection(self , vec_field , pressure_pair , markerdt ):
         pass
 
 class DiffusionSolver(metaclass = ABCMeta):

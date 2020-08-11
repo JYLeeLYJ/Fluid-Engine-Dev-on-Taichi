@@ -1,6 +1,6 @@
 from typing import Union ,Tuple , List
 from abc import ABCMeta , abstractmethod
-from types import Index , Vector , Matrix , Float , Int
+from basic_types import Index , Vector , Matrix , Float , Int
 
 import taichi as ti
 
@@ -42,11 +42,6 @@ class DataPair:
 @ti.data_oriented
 class Grid(metaclass = ABCMeta ):
 
-    class Sampler(metaclass = ABCMeta):
-        @abstractmethod
-        def sample_value(self , grid : Grid, pos : Index ) -> Vector or Float :
-            pass
-
     def __init__( 
         self , 
         size : Tuple[int] or List[int] ,
@@ -54,8 +49,8 @@ class Grid(metaclass = ABCMeta ):
 
         assert len(spacing) == 2 and len(size) == 2
         
-        self._spacing = spacing
-        self._size = size
+        self._spacing = list(spacing)
+        self._size = list(size)
 
     def bounding_box(self):
         #TODO implement bounding box 
@@ -69,25 +64,33 @@ class Grid(metaclass = ABCMeta ):
     def value(self , pos : Index) -> Vector or Float:
         pass
 
-    @ti.func
+    # @ti.func
     def size(self) -> Vector :
-        return ti.Vector(self.size)
+        # return ti.Vector(self._size)
+        return self._size
 
-    @ti.func
+    # @ti.func
     def spacing(self) -> Vector :
-        return ti.Vector(self.spacing)
+        # return ti.Vector(self._spacing)
+        return self._spacing
+
+class Sampler(metaclass = ABCMeta):
+    @abstractmethod
+    def sample_value(self , grid : Grid, pos : Index ) -> Vector or Float :
+        pass
+
 
 # Bilinear interpolation sampling in 2d grids
 @ti.data_oriented
-class Bilinear_Interp_Sampler(Grid.Sampler):
+class Bilinear_Interp_Sampler(Sampler):
     def __init__(self):
         pass
 
     @ti.func
-    def sample_value(self , grid : Grid , pos : Vector) -> ti.template():   # Vector or Grid
-        I = ti.static(pos)
-        iu , iv = int(I[0]) , int(I[1])
-        du , dv = I[0] - iu , I[1] - iv
+    def sample_value(self , grid : Grid , pos : Vector) -> ti.template():   # Vector or Scalar
+        # I = ti.static(pos)
+        iu , iv = int(pos[0]) , int(pos[1])
+        du , dv = pos[0] - iu , pos[1] - iv
         a = grid[iu , iv]
         b = grid[iu + 1 , iv]
         c = grid[iu , iv + 1]
@@ -156,8 +159,7 @@ class ScalarField(Grid):
 
         return (right + left - 2 * centre) / (ds[0] ** 2) + (top + down - 2 * centre) / (ds[1] ** 2)
 
-    @ti.func
-    def field(self) -> ti.template():
+    def field(self) -> ti.template():   # ScalarField
         return self._grid
 
 @ti.data_oriented
@@ -187,8 +189,8 @@ class VectorField(Grid):
 
         return 0.5 * ((right - left) / ds[0] + (top - down)/ds[1])
 
-    @ti.func
-    def field(self) -> ti.template():
+    # @ti.func
+    def field(self) -> ti.template():   # VectorField
         return self._grid
 
 # @ti.data_oriented
@@ -220,4 +222,3 @@ class VectorField(Grid):
 #     @ti.func
 #     def sample(self , grid , pos):
 #         return self._value
-
