@@ -40,19 +40,18 @@ class SmokeEmitter(GridEmitter):
 
 @ti.data_oriented
 class FlowEmitter(GridEmitter):
-    def __init__(self , density_getter , velocity_getter ,source_pos):
+    def __init__(self , density_getter , velocity_getter ,source_pos , radius):
         self.get_density = density_getter
         self.get_velocity = velocity_getter
-        self.f_strength = 2000.0
-        self.res = 512
+        self.f_strength = 200.0
         self.source_x ,self.source_y = source_pos
+        self.radius = radius
 
     @ti.kernel
     def emit(self , time_interval : Float ):
         f_strenght_dt = self.f_strength * time_interval
-        force_r = ti.static(self.res / 3.0)
-        inv_force_r = ti.static (1.0 / force_r)
-        inv_dye_denom = ti.static(4.0 / (self.res / 20.0)**2)
+        inv_force_r = ti.static (1.0 / self.radius)
+        # inv_dye_denom = ti.static(4.0 / (self.res / 20.0)**2)
         sx , sy = ti.static( self.source_x , self.source_y )
         vf , df= ti.static(self.get_velocity().field() , self.get_density().field())
 
@@ -62,8 +61,19 @@ class FlowEmitter(GridEmitter):
             momentum = f_strenght_dt * ti.exp( -d2 * inv_force_r) * ti.Vector([0.0,1.0])
             vf[i,j] = vf[i,j] + momentum
             dc = df[i,j]
-            dc += ti.exp(-d2 * inv_dye_denom ) 
+            dc += ti.exp(-d2 * inv_force_r ) 
             df[i,j] = min(dc , 1.0)
+
+@ti.data_oriented
+class BoxEmitter(GridEmitter):
+    def __init__(self , density_getter , temp_getter , Box):
+        pass
+
+    @ti.kernel
+    def emit(self , time_interval : Float):
+        # for i , j in box :
+        #    density = value , tempreture = value
+        pass
 
 @ti.data_oriented
 class Smoke_Solver(Eulerian_Solver):
@@ -159,11 +169,15 @@ def build_smoke(resolution):
     ])
     smoke.set_externel_forces([
         # smoke.gravity_force , 
-        smoke.buoyancy_force
+        # smoke.buoyancy_force
     ])
-    smoke.set_emitter(SmokeEmitter(
-        smoke.tempreture , 
-        smoke.density ,
-        (resolution[0]/2 , 0),
-        min(resolution[0],resolution[1])))
+    # smoke.set_emitter(SmokeEmitter(
+    #     smoke.tempreture , 
+    #     smoke.density ,
+    #     (resolution[0]/2 , 0),
+    #     min(resolution[0],resolution[1])))
+    smoke.set_emitter(FlowEmitter(
+        smoke.density , smoke.velocity ,
+        (resolution[0]/2 , 0) , resolution[0]/3
+    ))
     return smoke

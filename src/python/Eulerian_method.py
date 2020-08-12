@@ -2,7 +2,7 @@ from abc import ABCMeta ,abstractmethod
 from typing import List , Callable , Union , Tuple , Optional 
 from enum import Enum
 
-from utils import * # DataPair , Grid , Bilinear_Interp_Sampler , VectorField , ScalarField ,ConstantField, clamp_index2
+from utils import * 
 from fluid_solver import FluidMark ,GridMethod_Solver , AdvectionSolver , ProjectionSolver , DiffusionSolver
 from basic_types import Float , Vector ,Index
 
@@ -87,13 +87,6 @@ class ForwardEulerDeffusionSolver(DiffusionSolver):
         
         return dfx / (ds[0] ** 2) + dfy / (ds[1] ** 2) 
 
-@ti.func
-def sample(field , u , v):
-    i = max(0, min(511, int(u)))
-    j = max(0, min(511, int(v)))
-    return field[i, j]
-
-
 @ti.data_oriented
 class Jacobian_ProjectionSolver(ProjectionSolver):
     def __init__(self , max_iter : int = 30):
@@ -123,7 +116,8 @@ class Jacobian_ProjectionSolver(ProjectionSolver):
         # TODO : use marker in divergence
         v = ti.static(vel_field.field())
         for I in ti.grouped(v):
-            v[I] -= pressure_field.gradient(I) #* time_interval / density.value(I)
+            # treat (delta_t / density) is constant while doing projection 
+            v[I] -= pressure_field.gradient(I) # time_interval / density.value(I)
 
     @ti.kernel
     def jacobian_step(        
