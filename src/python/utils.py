@@ -193,33 +193,3 @@ class VectorField(Grid):
 
     def field(self) -> ti.template():   # VectorField
         return self._grid
-
-# @ti.data_oriented
-# class ClampSampler(GridSampler):
-#     def __init__(self , resolution):
-#         self.resolution = resolution
-
-#     @ti.func
-#     def sample(self , field , Indices):
-#         dim = ti.static(len(self.resolution))
-#         I = []
-#         for i in range(dim):
-#             I.append(max(0, min(self.resolution[i] - 1, int(self.resolution[i]))))
-#         return field[I]
-
-# @ti.data_oriented
-# class DirectlySampler(GridSampler):
-#     @ti.func
-#     def sample(self , grid , pos ):
-#         # might lead to undefined behavior if pos is out of index boundary
-#         return grid[pos]    
-
-# @ti.data_oriented
-# class ConstantSampler(GridSampler):
-
-#     def __init__(self , const_value):
-#         self._value = const_value
-
-#     @ti.func
-#     def sample(self , grid , pos):
-#         return self._value
