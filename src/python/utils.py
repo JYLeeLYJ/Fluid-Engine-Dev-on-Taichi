@@ -83,18 +83,18 @@ class Sampler(metaclass = ABCMeta):
 # Bilinear interpolation sampling in 2d grids
 @ti.data_oriented
 class Bilinear_Interp_Sampler(Sampler):
-    def __init__(self):
-        pass
+    def __init__(self , size):
+        self._size = size
 
     @ti.func
-    def sample_value(self , grid : Grid , pos : Vector) -> ti.template():   # Vector or Scalar
-        # I = ti.static(pos)
-        iu , iv = int(pos[0]) , int(pos[1])
-        du , dv = pos[0] - iu , pos[1] - iv
-        a = grid[iu , iv]
-        b = grid[iu + 1 , iv]
-        c = grid[iu , iv + 1]
-        d = grid[iu + 1 , iv + 1]
+    def sample_value(self , grid : ti.template() , pos : Vector) -> ti.template():   # Vector or Scalar
+        s , t = pos[0] - 0.5 , pos[1] - 0.5
+        iu , iv = int(s) , int(t)
+        du , dv = s - iu , t - iv
+        a = grid[clamp_index2(int(iu + 0.5) , int(iv + 0.5) , self._size)]
+        b = grid[clamp_index2(int(iu + 1.5) , int(iv + 0.5) , self._size)]
+        c = grid[clamp_index2(int(iu + 0.5) , int(iv + 1.5) , self._size)]
+        d = grid[clamp_index2(int(iu + 1.5) , int(iv + 1.5) , self._size)]
         return linear_interpolate(
             linear_interpolate( a , b , du) , 
             linear_interpolate( c , d , du) , 
@@ -122,10 +122,11 @@ class ConstantField(Grid):
 
 @ti.data_oriented
 class ScalarField(Grid):
-    def __init__( self , ti_field, spacing = (1,1) , sampler = Bilinear_Interp_Sampler()):
+    def __init__( self , ti_field, spacing = (1,1) , sampler = None):
+        super().__init__(ti_field.shape , spacing)
+
         self._grid = ti_field
-        self._sampler = sampler
-        super().__init__(self._grid.shape , spacing)
+        self._sampler = Bilinear_Interp_Sampler(ti_field.shape) if sampler == None else sampler
 
     @ti.func
     def sample(self, pos : Vector)->Float:
@@ -164,10 +165,11 @@ class ScalarField(Grid):
 
 @ti.data_oriented
 class VectorField(Grid):
-    def __init__(self , ti_field , spacing = (1,1) , sampler = Bilinear_Interp_Sampler()):
+    def __init__(self , ti_field , spacing = (1,1) , sampler = None):
+        super().__init__(ti_field.shape , spacing)
+
         self._grid = ti_field
-        self._sampler = sampler
-        super().__init__(self._grid.shape , spacing)
+        self._sampler = Bilinear_Interp_Sampler(ti_field.shape) if sampler == None else sampler
 
     @ti.func
     def sample(self, pos : Vector )->Vector:
@@ -189,7 +191,6 @@ class VectorField(Grid):
 
         return 0.5 * ((right - left) / ds[0] + (top - down)/ds[1])
 
-    # @ti.func
     def field(self) -> ti.template():   # VectorField
         return self._grid
 

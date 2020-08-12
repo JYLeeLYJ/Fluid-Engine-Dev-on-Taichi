@@ -8,6 +8,7 @@ ti.init(arch = ti.gpu , kernel_profiler = True)
 gui = ti.GUI("smoke animation" , res = res)
 
 ani = Smoke_Animation(res)
+ani.reset()
 
 while gui.running:
     ani.update()

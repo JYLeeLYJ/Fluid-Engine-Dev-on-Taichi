@@ -1,9 +1,9 @@
-from fluid_solver import GridMethod_Solver
 from abc import ABCMeta ,abstractmethod
-from utils import * # DataPair , Grid , Bilinear_Interp_Sampler , VectorField , ScalarField ,ConstantField, clamp_index2
 from typing import List , Callable , Union , Tuple , Optional 
 from enum import Enum
 
+from utils import * # DataPair , Grid , Bilinear_Interp_Sampler , VectorField , ScalarField ,ConstantField, clamp_index2
+from fluid_solver import FluidMark ,GridMethod_Solver , AdvectionSolver , ProjectionSolver , DiffusionSolver
 from basic_types import Float , Vector ,Index
 
 import taichi as ti
@@ -22,7 +22,7 @@ class Semi_Lagrangian(AdvectionSolver):
 
     @ti.func
     def backtrace(self ,  vel_grid : ti.template() , I : Index, dt : Float ) -> Vector:
-        p = ti.Vector([float(I[0]) , float(I[1])])
+        p = ti.Vector([float(I[0]) + 0.5 , float(I[1]) + 0.5])
         if ti.static(self.RK == Order.RK_1):
             p -= dt * vel_grid.value(I)
         elif ti.static(self.RK == Order.RK_2):
@@ -51,6 +51,7 @@ class Semi_Lagrangian(AdvectionSolver):
             pos = self.backtrace(vel_grid , I ,dt)
             out[I] = in_grid.sample(pos)
 
+@ti.data_oriented
 class ForwardEulerDeffusionSolver(DiffusionSolver):
     def __init__(self , diffusion_coefficient):
         self.coefficient = diffusion_coefficient
@@ -63,16 +64,16 @@ class ForwardEulerDeffusionSolver(DiffusionSolver):
         marker : ti.template(),         # ScalaField
         dt : Float ):
 
-        for I in ti.grouped(vel_grid.field()) :
-            next_vel_grid[I] = vel_grid[I] + \
-                self.coefficient * dt * self.laplacian(vel_grid ,marker, I)
+        vf_cur , vf_nxt = ti.static(vel_grid.field() , next_vel_grid.field())
+        for I in ti.grouped(vf_cur) :
+            vf_nxt[I] = vf_cur[I] + self.coefficient * dt * self.laplacian(vel_grid ,marker, I)
 
     # TODO : reduce to gird.laplacian()
     @ti.func
     def laplacian( self , grid : Grid, marker : Grid , I : Index) :
         sz , ds = grid.size() , grid.spacing()
-        dfx , dfy = 0.0 , 0.0
-        i , j = ti.static(I[0] , I[1])
+        dfx , dfy = ti.Vector([0.0 , 0.0]) , ti.Vector([0.0 , 0.0])
+        i , j = I[0] , I[1]
         center = grid.value(I)
         if i > 0 and marker.value([i - 1,j]) == FluidMark.Fluid :
             dfx += grid.value([i - 1, j]) - center
@@ -86,6 +87,13 @@ class ForwardEulerDeffusionSolver(DiffusionSolver):
         
         return dfx / (ds[0] ** 2) + dfy / (ds[1] ** 2) 
 
+@ti.func
+def sample(field , u , v):
+    i = max(0, min(511, int(u)))
+    j = max(0, min(511, int(v)))
+    return field[i, j]
+
+
 @ti.data_oriented
 class Jacobian_ProjectionSolver(ProjectionSolver):
     def __init__(self , max_iter : int = 30):
@@ -95,35 +103,32 @@ class Jacobian_ProjectionSolver(ProjectionSolver):
         self ,
         vel_field : VectorField,
         pressure_pair : DataPair,
-        density : ScalarField ,
         marker : ScalarField,
         dt : Float ):
 
         for _ in range(self._max_iter) :
-            self.jacobian_step( vel_field , density ,pressure_pair.old , pressure_pair.new , dt) 
+            self.jacobian_step( vel_field ,pressure_pair.old , pressure_pair.new , dt) 
             pressure_pair.swap()
 
-        self.update_v(vel_field , pressure_pair.old , density , marker,dt)
+        self.update_v(vel_field , pressure_pair.old  , marker,dt)
 
     @ti.kernel
     def update_v(
         self , 
         vel_field : ti.template() ,     # VectorField
         pressure_field : ti.template() ,# ScalarField
-        density : ti.template(),        # ScalarField
         marker : ti.template(),         # ScalarField
         time_interval : Float ):
 
         # TODO : use marker in divergence
         v = ti.static(vel_field.field())
         for I in ti.grouped(v):
-            v[I] += pressure_field.gradient(I) * time_interval / density.value(I)
+            v[I] -= pressure_field.gradient(I) #* time_interval / density.value(I)
 
     @ti.kernel
     def jacobian_step(        
         self,
         vel_field : ti.template() ,
-        density : ti.template() ,
         pressure_curr   : ti.template() , 
         pressure_next   : ti.template() ,
         dt : Float ):
@@ -135,7 +140,7 @@ class Jacobian_ProjectionSolver(ProjectionSolver):
             pr = pressure_curr.value(clamp_index2(i + 1 , j , sz))
             pt = pressure_curr.value(clamp_index2(i , j + 1 , sz))
             pb = pressure_curr.value(clamp_index2(i , j - 1 , sz))
-            pf_nxt[i,j] = 0.25 *  (pl + pr + pt + pb - density.value([i,j]) * vel_field.divergence([i,j]) / dt) 
+            pf_nxt[i,j] = 0.25 *  (pl + pr + pt + pb - vel_field.divergence([i,j])) 
 
 class GridEmitter(metaclass = ABCMeta):
     @abstractmethod
@@ -164,7 +169,6 @@ class Eulerian_Solver(GridMethod_Solver):
         
         self._boundary_open = False
         self._emitters = []
-
 
     @abstractmethod
     def density(self)-> ScalarField:
@@ -207,6 +211,7 @@ class Eulerian_Solver(GridMethod_Solver):
         for pair in self.advection_grids :
             self.advection_solver.advect(self.velocity() , pair.old , pair.new , time_interval)
             self.extropolateIntoCollider(pair)
+
         for pair in self.advection_grids :
             pair.swap()
 
@@ -215,7 +220,7 @@ class Eulerian_Solver(GridMethod_Solver):
     def compute_viscosity(self , time_interval : float):
         if not self.diffusion_solver is None :
             marker = self.build_marker()
-            self.diffusion_solver.projection(
+            self.diffusion_solver.solve(
                 self._velocity_pair.old ,
                 self._velocity_pair.new, 
                 marker ,
@@ -229,25 +234,25 @@ class Eulerian_Solver(GridMethod_Solver):
             self.applyboundaryCondition()
 
     def compute_projection(self , time_interval : float):
-        #compute pressure 
+
+        # compute pressure 
         self.projection_solver.projection(
-            self.velocity() ,self._pressure_pair, self.density() , 
+            self.velocity() ,self._pressure_pair , 
             self.marker ,time_interval
         )
-        #apply boundary condition
+        # apply boundary condition
         self.applyboundaryCondition()
 
     def begin_time_intergrate(self, time_interval : float):
         #TODO update collider 
 
         for emitter in self._emitters:
-            emitter.emit()
+            emitter.emit(time_interval)
 
         self.applyboundaryCondition()
 
     def end_time_intergrate(self , time_interval : float):
-        # Nothing to do here now
-        pass     
+        pass
 
     ## ------- for concrete implemetation ---------------
 
@@ -277,7 +282,6 @@ class Eulerian_Solver(GridMethod_Solver):
     @ti.kernel
     def process_flux_and_slip(self):
         #TODO : collider sdf
-        # v = ti.static(self.velocity())
         pass
 
     @ti.kernel
@@ -285,11 +289,9 @@ class Eulerian_Solver(GridMethod_Solver):
         vf = ti.static(self.velocity().field())
         sz = ti.static(self.velocity().size())
         for i in range(sz[0]):
-            vf[i,0][0] = 0.0
-            vf[i,sz[1]-1][0] = 0.0
+            vf[i,0][1] = 0.0
+            vf[i,sz[1]-1][1] = 0.0
 
         for j in range(sz[1]):
-            vf[0,j][1] = 0.0
-            vf[sz[0] - 1, j][1] = 0.0
-
-
+            vf[0,j][0] = 0.0
+            vf[sz[0] - 1, j][0] = 0.0
