@@ -105,6 +105,7 @@ class Transform:
     
     @ti.func
     def to_local_direction(self , dir_in_world : Vector) -> Vector:
+        #TODO use rotation matrix
         return ti.Vector([
             self._cos_angle * dir_in_world[0] + self._sin_angle * dir_in_world[1] ,
             -self._sin_angle * dir_in_world[0] + self._cos_angle * dir_in_world[1]
@@ -267,11 +268,11 @@ class SurfaceToImplict(ImplicitSurface):
 
     @ti.func
     def closest_point_local(self , point : Vector)->Vector:
-        return self._surface.closest_point(point)
+        return self._surface.closest_point_local(point)
 
     @ti.func
     def closest_distance_local(self , point : Vector)->Float:
-        return self._surface.closest_distance(point)
+        return self._surface.closest_distance_local(point)
 
     """
     # def intersects_local(self , ray  : Ray) -> bool :
@@ -283,12 +284,12 @@ class SurfaceToImplict(ImplicitSurface):
 
     @ti.func
     def closest_normal_local(self , point : Vector) -> Vector:
-        return self._surface.closest_normal(point)
+        return self._surface.closest_normal_local(point)
 
     @ti.func
     def sign_distance_local(self , point : Vector) -> Float:
-        p = self._surface.closest_point(point)
-        return - distance(p , point) if self._surface.is_inside(point) else distance(p , point)
+        p = self._surface.closest_point_local(point)
+        return - distance(p , point) if self._surface.is_inside_local(point) else distance(p , point)
 
     """
     # def closest_interesection_local(self , ray : Ray) -> SurfaceRayIntersection:
@@ -297,7 +298,7 @@ class SurfaceToImplict(ImplicitSurface):
     
     @ti.func
     def is_inside_local(self , point : Vector) -> bool:
-        return self._surface.is_inside(point)
+        return self._surface.is_inside_local(point)
 
 class Plane(Surface):
     def __init__(self , normal , point , transfrom = Transform() , is_normal_flipped = False):

@@ -19,7 +19,7 @@ class Collider(metaclass = ABCMeta):
 
 # still not support self.velocity at present
 # let's treat it as a static body at first
-# TODO : add linear velocity and angle velocity setting , to support movement and rotation
+# TODO : add linear velocity and angle velocity setting , to support translation and rotation motion
 class RigidBodyCollier(Collider):
     def __init__(self , surface : Surface):
         self._surface = surface
