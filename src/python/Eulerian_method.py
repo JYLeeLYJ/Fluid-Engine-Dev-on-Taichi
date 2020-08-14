@@ -25,6 +25,7 @@ class Order(Enum):
 class Semi_Lagrangian(AdvectionSolver):
 
     def __init__(self , RK = Order.RK_1):
+        assert isinstance(RK ,Order)
         self.RK = RK
 
     @ti.func
@@ -174,7 +175,6 @@ class STDBoundarySolver(GridBoudaryConditionSolver):
         self.size = size
         self.boundary_open = is_open
         self.extrapolation_depth = 5
-        self.colliders = []
 
         self._collider_sdf = ScalarField(ti.field(dtype = ti.f32 , shape = size),size)
         self._collider_vel = VectorField(ti.Vector.field(2, dtype= ti.f32 , shape = size),size)
@@ -195,13 +195,10 @@ class STDBoundarySolver(GridBoudaryConditionSolver):
             self.close_boundary(pvelocity.old)
 
     def update_collider(self , colliders : List[Collider] ):
-        self.colliders = colliders
         self._collider_sdf.field().fill(1e8)    # fill max value
         for cld in colliders :
-            surface = cld.surface()
-            if not isinstance(surface , ImplicitSurface) :
-                surface = SurfaceToImplict(surface)
-            self.update_fields(cld , surface )
+            surface = cld.implict_surface()
+            self.update_fields(cld , surface) 
 
     @ti.kernel
     def build_marker(self ,marker : ti.template() , velocity : ti.template()):
@@ -253,13 +250,11 @@ class STDBoundarySolver(GridBoudaryConditionSolver):
         return self._collider_sdf
 
     @ti.kernel
-    def update_fields(self , collider : Collider , implicit_surface : ImplicitSurface ) :
-        surface = ti.static(implicit_surface)
+    def update_fields(self , collider : ti.template() , implicit_surface : ti.template() ) :
         sdf , vf = ti.static(self._collider_sdf.field() , self._collider_vel.field())
         for I in ti.grouped(sdf):
-            sdf[I] = min(vf[I] , surface.sign_distance(I))
+            sdf[I] = min(sdf[I] , implicit_surface.sign_distance(I))
             vf[I] = collider.velocity_at(I)
-
 
 # See "Fluid Engine Development" 3.4.1.2.1
 # TODO : test in-place implementation
@@ -367,8 +362,10 @@ class Eulerian_Solver(GridMethod_Solver):
         self._emitters.append(emitter)
 
     def add_collider(self , collider : Collider ):
-        self._colliders.append(Collider)
-        pass
+        self._colliders.append(collider)
+
+    def colliders(self ) -> List[Collider]:
+        return self._colliders
 
     ## ---------- override ---------------
 
@@ -386,7 +383,7 @@ class Eulerian_Solver(GridMethod_Solver):
         self.applyboundaryCondition()
 
     def compute_viscosity(self , time_interval : float):
-        if not self.diffusion_solver is None :
+        if self.diffusion_solver is not None :
             self.mark_fluid(
                 self.marker().field() ,
                 self.boundary_solver.collider_sdf() ,

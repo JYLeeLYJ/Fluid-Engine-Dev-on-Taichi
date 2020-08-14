@@ -36,15 +36,17 @@ class SmokeEmitter(GridEmitter):
             # df[i,j] = max(df[i,j] , exp)
             # tf[i,j] = max(tf[i,j] , exp)
             step = 1.0 - self.smooth( d2 / r )
-            df[i,j] = max(df[i,j] , step)
-            tf[i,j] = max(tf[i,j] , step)
+            # df[i,j] = max(df[i,j] , step)
+            # tf[i,j] = max(tf[i,j] , step)
+            df[i,j] = min(df[i,j] + step , 1.0)
+            tf[i,j] = min(tf[i,j] + step , 1.0)
 
 @ti.data_oriented
 class FlowEmitter(GridEmitter):
-    def __init__(self , density_getter , velocity_getter ,source_pos , radius):
-        self.get_density = density_getter
-        self.get_velocity = velocity_getter
-        self.f_strength = 200.0
+    def __init__(self , smoke ,source_pos , radius , f_strength):
+        self.get_density = smoke.density
+        self.get_velocity = smoke.velocity
+        self.f_strength = f_strength
         self.source_x ,self.source_y = source_pos
         self.radius = radius
 
@@ -52,7 +54,6 @@ class FlowEmitter(GridEmitter):
     def emit(self , time_interval : Float ):
         f_strenght_dt = self.f_strength * time_interval
         inv_force_r = ti.static (1.0 / self.radius)
-        # inv_dye_denom = ti.static(4.0 / (self.res / 20.0)**2)
         sx , sy = ti.static( self.source_x , self.source_y )
         vf , df= ti.static(self.get_velocity().field() , self.get_density().field())
 
@@ -65,8 +66,9 @@ class FlowEmitter(GridEmitter):
             dc += ti.exp(-d2 * inv_force_r ) 
             df[i,j] = min(dc , 1.0)
 
+"""
 @ti.data_oriented
-class BoxEmitter(GridEmitter):
+class VolumnEmitter(GridEmitter):
     def __init__(self , density_getter , temp_getter , Box):
         pass
 
@@ -75,17 +77,15 @@ class BoxEmitter(GridEmitter):
         # for i , j in box :
         #    density = value , tempreture = value
         pass
+"""
 
 @ti.data_oriented
 class Smoke_Solver(Eulerian_Solver):
-    def __init__ (self , resolution ):
+    def __init__ (self , resolution):
         dim = len(resolution)
 
         self.dim = dim
         self.resolution = tuple(resolution)
-
-        self.densityBuoyancyFactor = -0.0006
-        self.tempretureBuoyancyFactor = 10.0
 
         # quantity field
         self._velocity_old = ti.Vector.field(2,dtype = ti.f32 , shape=self.resolution)
@@ -111,7 +111,39 @@ class Smoke_Solver(Eulerian_Solver):
             ForwardEulerDeffusionSolver(0.0)
             )
 
+        self.set_advection_grids([
+            self.ptempreture,
+            self.pdensity,
+            self.pvelocity
+        ])
+
         self.set_gravity([0.0 , -9.8])
+
+        self._decay = 1.0
+
+    @property
+    def density_factor(self):
+        return  self._density_buoyancy_factor 
+
+    @density_factor.setter
+    def density_factor(self , factor ):
+        self._density_buoyancy_factor  = factor
+
+    @property
+    def tempreture_factor(self ):
+        return self._tempreture_buoyancy_factor
+
+    @tempreture_factor.setter
+    def tempreture_factor(self , factor ):
+        self._tempreture_buoyancy_factor = factor
+
+    @property
+    def decay(self ):
+        return self._decay
+
+    @decay.setter
+    def decay(self , decay_factor):
+        self._decay = decay_factor
 
     def reset(self):
         self._velocity_old.fill([0,0])
@@ -135,49 +167,52 @@ class Smoke_Solver(Eulerian_Solver):
 
         for I in ti.grouped(vf):
             vf[I] += time_interval * ti.Vector([0.0 , 1.0]) * \
-                (self.densityBuoyancyFactor * df[I] + self.tempretureBuoyancyFactor * (tf[I] - temp_avg))
+                (self.density_factor * df[I] + self.tempreture_factor * (tf[I] - temp_avg))
 
     def density(self):
         return self.pdensity.old
-
-    def pressure(self):
-        return self.ppressure.old
-
-    def velocity(self):
-        return self.pvelocity.old
 
     def tempreture(self):
         return self.ptempreture.old
 
     @ti.kernel
-    def density_decay(self):
+    def apply_decay(self):
         df , tf = ti.static(self.pdensity.old.field() , self.ptempreture.old.field())
         for I in ti.grouped(df):
-            df[I] = df[I] * 0.999
-            tf[I] = tf[I] * 0.999
+            df[I] = df[I] * self.decay
+            tf[I] = tf[I] * self.decay
 
     def end_time_intergrate(self, time_interval : float):
-        self.density_decay()
+        self.apply_decay()
         super().end_time_intergrate(time_interval)
 
-def build_smoke(resolution):
-    smoke = Smoke_Solver(resolution)
-    smoke.set_advection_grids([
-        smoke.ptempreture,
-        smoke.pdensity,
-        smoke.pvelocity
-    ])
-    smoke.set_externel_forces([
-        # smoke.gravity_force , 
-        # smoke.buoyancy_force
-    ])
-    # smoke.set_emitter(SmokeEmitter(
-    #     smoke.tempreture , 
-    #     smoke.density ,
-    #     (resolution[0]/2 , 0),
-    #     min(resolution[0],resolution[1])))
-    smoke.add_emitter(FlowEmitter(
-        smoke.density , smoke.velocity ,
-        (resolution[0]/2 , 0) , resolution[0]/3
-    ))
-    return smoke
+
+class Smoke_Builder:
+    def __init__(self , resolution):
+        self._smoke = Smoke_Solver(resolution) 
+        self._forces = []
+
+    def build(self) :
+        self._smoke.set_externel_forces(self._forces)
+        return self._smoke
+
+    def set_compute_buoyancy_force(self ,density_factor = -0.0006 , tempreture_factor= 300.0):
+        self._smoke.density_factor = density_factor
+        self._smoke.tempreture_factor = tempreture_factor
+        self._forces.append(self._smoke.buoyancy_force)
+
+        return self
+    
+    def set_gravity(self) :
+        self._forces.append(self._smoke.gravity_force)
+        return self
+
+    def set_decay(self ,decay = 0.99 ):
+        self._smoke.decay = decay
+        return self
+
+    def add_flow_emitter(self,source_pos , radius , f_strenght = 1000.0) :
+        self._smoke.add_emitter(FlowEmitter(self._smoke , source_pos ,radius , f_strenght))
+        return self
+
+

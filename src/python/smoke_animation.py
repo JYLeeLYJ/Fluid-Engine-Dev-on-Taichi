@@ -1,17 +1,17 @@
 from animation import Animation
-from smoke_solver import build_smoke
 import taichi as ti
 
 @ti.data_oriented
 class Smoke_Animation(Animation):
-    def __init__(self , resolution = (512,512), time_interval = 0.04):
+    def __init__(self , solver , resolution = (512,512), time_interval = 0.04):
         import numpy as np
 
         self.dt = time_interval
         self.pixels = ti.Vector.field(3 ,dtype = ti.f32 , shape = resolution)
-        self.dcolor = ti.Vector(list(np.random.rand(3) * 0.7 + 0.3) )
-
-        self.smoke = build_smoke(resolution)
+        self.dcolor = ti.Vector(list(np.random.rand(3) * 0.7 + 0.3))
+        
+        self.bound_color = ti.Vector([255.0 ,99.0 , 71.0]) / 255.0
+        self.smoke = solver
 
     def reset(self):
         self.smoke.reset()
@@ -21,8 +21,14 @@ class Smoke_Animation(Animation):
     def render(self):
         d = ti.static(self.smoke.density().field())
         px = ti.static(self.pixels)
+        sdf = ti.static(self.smoke.boundary_solver.collider_sdf().field())
         for I in ti.grouped(px):
-            px[I] = d[I] * self.dcolor
+            if sdf[I] < -4.0 :
+                px[I] = self.bound_color * 0.7     # collider inside color
+            elif sdf[I] < 0.0 :
+                px[I] = self.bound_color    # collider boundary color
+            else:
+                px[I] = d[I] * self.dcolor  # smoke color
 
     def update(self):
         self.smoke.advance_time_step(self.dt)

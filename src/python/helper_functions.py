@@ -14,7 +14,7 @@ def clamp_scalar(val , low , high):
 
 @ti.func
 def clamp_vector(val , low , high):
-    dim = ti.static(len(val.shape))
+    dim = ti.static(val.n)
     res = val
     for i in ti.static(range(dim)):
         res[i] = clamp_scalar(val[i] , low[i] , high[i])
