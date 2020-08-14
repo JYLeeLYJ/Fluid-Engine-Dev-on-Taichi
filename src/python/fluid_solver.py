@@ -6,7 +6,7 @@ class FluidSolver(metaclass = ABCMeta):
     def advance_time_step(self , dt : float):
         pass
 
-class PraticalMethod_Solver(FluidSolver):
+class ParticalMethod_Solver(FluidSolver):
     #TODO
     def __init__(self):
         pass
