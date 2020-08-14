@@ -78,8 +78,9 @@ class BoundingBox:
 @ti.data_oriented
 class Transform:
     def __init__ (self ):
-        self._translation = ti.Vector([0.0 ,0.0])
-        self._orientation = 0.0       
+        self.translation = ti.Vector([0.0 ,0.0])
+        self.orientation = 0.0      
+
 
     @property
     def translation (self):
@@ -382,10 +383,60 @@ class Box(Surface):
     
     @ti.func
     def closest_normal_local(self , point :Vector)->Vector:
-        #TODO
-        return 
+        result = self._plane[0]._normal
+        if self._bound.contains(point):
+            closest_n = self._plane[0]._normal
+            dis = 1e8            
+
+            for i in ti.static(range(4)):
+                local_p = self._plane[i].closest_point_local(point)
+                local_dis = distance_sqr(local_p , point)
+
+                if local_dis < dis :
+                    closest_n = self._plane[i]._normal
+                    dis = local_dis
+            result = closest_n
+        else:
+            point_to_cloest = point - clamp(point , self._bound.lower_corner,self._bound.upper_corner)
+            closest_n = self._plane[0]._normal
+            angle = closest_n.dot(point_to_cloest)
+
+            for i in ti.static(range(1,4)):
+                cos = self._plane[i]._normal.dot(point_to_cloest)
+                if cos > angle :
+                    closest_n = self._plane[i]._normal
+                    angle = cos
+            result = closest_n
+
+        return result
+
+    @ti.func
+    def is_inside_local(self , point : Vector)->bool:
+        return self._bound.contains(point)
 
     """
     # def closest_interesection_local(self , ray :Ray)->SurfaceRayIntersection:
     #     pass
     """
+
+class Ball(Surface):
+    def __init__(self , mid_point , radius):
+        self._mid = mid_point
+        self._radius = abs(radius)
+
+    @ti.func
+    def closest_point_local(self , point : Vector)->Vector:
+        return self._mid + self.closest_normal_local(point) * self._radius
+
+    @ti.func
+    def is_inside_local(self , point : Vector)->bool:
+        return distance_sqr(point , self._mid) < (self._radius ** 2)
+
+    @ti.func
+    def closest_normal_local(self , point :Vector )->Vector:
+        return (point - self._mid).normalized()
+
+    @ti.func
+    def closest_distance_local(self ,point : Vector)->Float:
+        dis = self._radius - distance(point , self._mid)
+        return abs(dis)
