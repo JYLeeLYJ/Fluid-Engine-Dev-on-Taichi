@@ -1,35 +1,9 @@
 from typing import Union ,Tuple , List
 from abc import ABCMeta , abstractmethod
+
 from basic_types import Index , Vector , Matrix , Float , Int
-
+from helper_functions import clamp_index2 ,linear_interpolate
 import taichi as ti
-
-### ================ Utility Functions =============================
-
-@ti.func
-def clamp_index( I : Index , size : Vector) -> Index:
-    # dim = ti.static(len(I.shape))
-    # index = []
-    # for i in range(dim):
-    #     index.append(max(0,min(I[i] , size[i])))
-    # return index
-
-    ti.static_assert(len(size.shape) == 2 and len(I.shape) == 2)
-    i = max(0,min(int(I[0]) ,size[0] -1))
-    j = max(0,min(int(I[1]) ,size[1] -1))
-    return ti.Vector([i,j])
-
-@ti.func
-def clamp_index2( x : Int , y : Int , size : Vector) -> Index :
-    i = max(0,min(x ,size[0] -1))
-    j = max(0,min(y ,size[1] -1))
-    return ti.Vector([i,j])
-
-@ti.func
-def linear_interpolate( v1 : ti.template(), v2 : ti.template()  , fraction : Float) -> ti.template() :
-    return v1 + fraction * (v2 - v1)
-
-### ================ Utility types ================================
 
 class DataPair:
     def __init__(self , old  , new , Grid ):
@@ -64,6 +38,14 @@ class Grid(metaclass = ABCMeta ):
     def value(self , pos : Index) -> Vector or Float:
         pass
 
+    @abstractmethod
+    def zero_value(self) :
+        pass
+
+    @abstractmethod
+    def one_value(self):
+        pass
+
     # @ti.func
     def size(self) -> Vector :
         # return ti.Vector(self._size)
@@ -78,7 +60,6 @@ class Sampler(metaclass = ABCMeta):
     @abstractmethod
     def sample_value(self , grid : Grid, pos : Index ) -> Vector or Float :
         pass
-
 
 # Bilinear interpolation sampling in 2d grids
 @ti.data_oriented
@@ -120,6 +101,36 @@ class ConstantField(Grid):
     def value(self, pos : Index) -> ti.template():
         return self._value
 
+    """ zero and one are meaningless in this class"""
+    @ti.func
+    def zero_value(self):
+        return self._value
+    
+    @ti.func
+    def one_value(self):
+        return self._value
+
+@ti.data_oriented
+class MarkerField(Grid):
+    def __init__( self , marker, spacing = (1,1) , sampler = None):
+        self.marker = marker
+    
+    @ti.func
+    def sample(self , pos : Vector) -> Int :
+        return self.marker[int(pos)]
+
+    @ti.func
+    def value(self , pos : Index) -> Int:
+        return self.marker[pos]
+
+    @ti.func
+    def zero_value(self) -> Int:
+        return 0
+
+    @ti.func
+    def one_value(self) -> Int:
+        return 1
+
 @ti.data_oriented
 class ScalarField(Grid):
     def __init__( self , ti_field, spacing = (1,1) , sampler = None):
@@ -146,6 +157,14 @@ class ScalarField(Grid):
         down = self._grid[clamp_index2(i , j - 1 , sz)]
 
         return  0.5 * ti.Vector([(right - left) / ds[0] , (top - down) / ds[1]])
+
+    @ti.func
+    def zero_value(self) -> Float:
+        return 0.0
+
+    @ti.func
+    def one_value(self) -> Float :
+        return 1.0
 
     @ti.func
     def laplacian(self , pos : Index) -> Float :
@@ -178,6 +197,14 @@ class VectorField(Grid):
     @ti.func
     def value(self, pos : Index)->Float:
         return self._grid[pos]
+
+    @ti.func
+    def one_value(self) -> Vector:
+        return ti.Vector.one(ti.f32 , 2)
+    
+    @ti.func
+    def zero_value(self) -> Vector:
+        return ti.Vector.zero(ti.f32 ,2)
 
     @ti.func
     def divergence(self, pos : Index) -> Float:
