@@ -1,5 +1,6 @@
 from animation import Animation
 import taichi as ti
+# from gif_maker import GIF_Maker
 
 @ti.data_oriented
 class Smoke_Animation(Animation):
@@ -12,6 +13,8 @@ class Smoke_Animation(Animation):
         
         self.bound_color = ti.Vector([255.0 ,99.0 , 71.0]) / 255.0
         self.smoke = solver
+
+        # self.gif = GIF_Maker()
 
     def reset(self):
         self.smoke.reset()
@@ -34,6 +37,12 @@ class Smoke_Animation(Animation):
         self.smoke.advance_time_step(self.dt)
 
     def display(self , gui : ti.GUI):
+
+        # if gui.get_event(ti.GUI.PRESS):
+        #     if gui.is_pressed(ti.GUI.SPACE) : 
+        #         self.gif.change()
+
         self.render()
+        # self.gif.set_img(self.pixels)
         gui.set_image(self.pixels)
         gui.show()

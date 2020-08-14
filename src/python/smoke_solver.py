@@ -106,7 +106,7 @@ class Smoke_Solver(Eulerian_Solver):
             self.resolution,
             self.pvelocity , 
             self.ppressure ,
-            Semi_Lagrangian(),
+            Semi_Lagrangian(Order.RK_3),
             Jacobian_ProjectionSolver(),
             ForwardEulerDeffusionSolver(0.0)
             )
@@ -203,7 +203,7 @@ class Smoke_Builder:
 
         return self
     
-    def set_gravity(self) :
+    def set_compute_gravity(self) :
         self._forces.append(self._smoke.gravity_force)
         return self
 
