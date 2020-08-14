@@ -67,3 +67,8 @@ def distance(v1 , v2):
 @ti.func
 def distance_sqr(v1 ,  v2):
     return (v1 - v2).norm_sqr()
+
+@ti.kernel
+def copy(src : ti.template() , dst : ti.template()):
+    for I in ti.grouped(src):
+        dst[I] = src[I]

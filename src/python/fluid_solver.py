@@ -3,7 +3,7 @@ from enum import Enum
 
 class FluidSolver(metaclass = ABCMeta):
     @abstractmethod
-    def advance_time_step(self , dt):
+    def advance_time_step(self , dt : float):
         pass
 
 class PraticalMethod_Solver(FluidSolver):
@@ -56,14 +56,14 @@ class HybridMethod_Solver(FluidSolver):
 
 ### =================================================================================
 
-class FluidMark(Enum):
+class FluidMark:
     Fluid = 0
     Air = 1
     Boundary = 2
 
 class AdvectionSolver(metaclass = ABCMeta):
     @abstractmethod
-    def advect(self, vec_field , in_grid , out_grid , dt):
+    def advect(self, vec_field ,in_grid , out_grid , sdf , dt):
         pass
 
 class ProjectionSolver(metaclass = ABCMeta):
@@ -74,4 +74,21 @@ class ProjectionSolver(metaclass = ABCMeta):
 class DiffusionSolver(metaclass = ABCMeta):
     @abstractmethod
     def solve(self , vec_field , next_vec_field , diffusionCoefficient , dt) :
+        pass
+
+class GridBoudaryConditionSolver(metaclass = ABCMeta):
+    @abstractmethod
+    def constrain_velocity(self , pvelocity  , marker  ,depth ):
+        pass
+
+    @abstractmethod
+    def collider_velocity_at(self , I):
+        pass
+
+    @abstractmethod
+    def collider_sdf(self):
+        pass
+
+    @abstractmethod
+    def update_collider(self , colliders):
         pass

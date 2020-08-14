@@ -6,9 +6,9 @@ from helper_functions import clamp_index2 ,linear_interpolate
 import taichi as ti
 
 class DataPair:
-    def __init__(self , old  , new , Grid ):
-        self.new = Grid(new) 
-        self.old = Grid(old)
+    def __init__(self , old  , new , Grid , shape ):
+        self.new = Grid(new , shape) 
+        self.old = Grid(old , shape)
 
     def swap(self):
         self.new , self.old = self.old , self.new 
@@ -112,9 +112,12 @@ class ConstantField(Grid):
 
 @ti.data_oriented
 class MarkerField(Grid):
-    def __init__( self , marker, spacing = (1,1) , sampler = None):
+    def __init__( self , marker, size ,spacing = (1,1) , sampler = None):
         self.marker = marker
     
+    def field(self) -> ti.template():
+        return self.marker
+
     @ti.func
     def sample(self , pos : Vector) -> Int :
         return self.marker[int(pos)]
@@ -133,11 +136,11 @@ class MarkerField(Grid):
 
 @ti.data_oriented
 class ScalarField(Grid):
-    def __init__( self , ti_field, spacing = (1,1) , sampler = None):
-        super().__init__(ti_field.shape , spacing)
+    def __init__( self , ti_field, size , spacing = (1,1) , sampler = None):
+        super().__init__(size, spacing)
 
         self._grid = ti_field
-        self._sampler = Bilinear_Interp_Sampler(ti_field.shape) if sampler == None else sampler
+        self._sampler = Bilinear_Interp_Sampler(size)if sampler == None else sampler
 
     @ti.func
     def sample(self, pos : Vector)->Float:
@@ -184,11 +187,11 @@ class ScalarField(Grid):
 
 @ti.data_oriented
 class VectorField(Grid):
-    def __init__(self , ti_field , spacing = (1,1) , sampler = None):
-        super().__init__(ti_field.shape , spacing)
+    def __init__(self , ti_field ,size ,  spacing = (1,1) , sampler = None):
+        super().__init__( size, spacing)
 
         self._grid = ti_field
-        self._sampler = Bilinear_Interp_Sampler(ti_field.shape) if sampler == None else sampler
+        self._sampler = Bilinear_Interp_Sampler(size) if sampler == None else sampler
 
     @ti.func
     def sample(self, pos : Vector )->Vector:

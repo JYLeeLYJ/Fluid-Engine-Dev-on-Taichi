@@ -12,7 +12,7 @@ Index = Vector
 # ScalarGrid = Grid
 # VectorGrid = Grid
 
-INT_TYPEs = [int , ti.i8 , ti.i16 , ti.i32 , ti.i64]
+INT_TYPEs = [int , ti.i8 , ti.i16 , ti.i32 , ti.i64 , ti.u16 ,ti.u8,ti.u32 ,ti.u64 ]
 FLAOT_TYPEs = [float , ti.f32 , ti.f64]
 
 def in_int_type(dtype):

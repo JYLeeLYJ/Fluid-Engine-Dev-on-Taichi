@@ -1,5 +1,6 @@
 from Eulerian_method import GridEmitter ,Eulerian_Solver , Semi_Lagrangian , Order ,ForwardEulerDeffusionSolver,Jacobian_ProjectionSolver
-from utils import DataPair , VectorField , ScalarField , clamp_index2
+from utility import DataPair , VectorField , ScalarField 
+from helper_functions import clamp_index2
 from basic_types import Float
 import taichi as ti
 
@@ -79,8 +80,6 @@ class BoxEmitter(GridEmitter):
 class Smoke_Solver(Eulerian_Solver):
     def __init__ (self , resolution ):
         dim = len(resolution)
-        # assert(dim == 2 or dim == 3 , "Incorrect resolution shape , should be (x, y) or (x,y,z).")
-        # assert(dim == 2 , "only 2d resolution is supported at present , like (x,y) or [x,y]")
 
         self.dim = dim
         self.resolution = tuple(resolution)
@@ -98,12 +97,13 @@ class Smoke_Solver(Eulerian_Solver):
         self._density_new = ti.field( dtype = ti.f32 , shape=self.resolution)
         self._density_old = ti.field( dtype = ti.f32 , shape=self.resolution)
 
-        self.pvelocity = DataPair(self._velocity_old , self._velocity_new , VectorField)
-        self.ptempreture = DataPair(self._tempreture_old , self._tempreture_new , ScalarField)
-        self.ppressure = DataPair(self._pressure_old , self._pressure_new , ScalarField)
-        self.pdensity = DataPair(self._density_old , self._density_new , ScalarField)
+        self.pvelocity = DataPair(self._velocity_old , self._velocity_new , VectorField , self.resolution)
+        self.ptempreture = DataPair(self._tempreture_old , self._tempreture_new , ScalarField , self.resolution)
+        self.ppressure = DataPair(self._pressure_old , self._pressure_new , ScalarField,self.resolution)
+        self.pdensity = DataPair(self._density_old , self._density_new , ScalarField,self.resolution)
 
-        super(Smoke_Solver , self).__init__(
+        super().__init__(
+            self.resolution,
             self.pvelocity , 
             self.ppressure ,
             Semi_Lagrangian(),
@@ -176,7 +176,7 @@ def build_smoke(resolution):
     #     smoke.density ,
     #     (resolution[0]/2 , 0),
     #     min(resolution[0],resolution[1])))
-    smoke.set_emitter(FlowEmitter(
+    smoke.add_emitter(FlowEmitter(
         smoke.density , smoke.velocity ,
         (resolution[0]/2 , 0) , resolution[0]/3
     ))
